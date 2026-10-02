@@ -28,10 +28,10 @@ jobs:
           APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
         run: |
           supabase secrets set --project-ref "$PROJECT_REF" \
-            LG_API_KEY="$LG_API_KEY" \
-            LG_API_SECRET="$LG_API_SECRET" \
-            APP_PASSWORD="$APP_PASSWORD" \
-            ALLOWED_ORIGIN="https://${{ github.repository_owner }}.github.io"
+            LG_LOOKUP_API_KEY="$LG_API_KEY" \
+            LG_LOOKUP_API_SECRET="$LG_API_SECRET" \
+            LG_LOOKUP_APP_PASSWORD="$APP_PASSWORD" \
+            LG_LOOKUP_ALLOWED_ORIGIN="https://${{ github.repository_owner }}.github.io"
       - name: Deploy function
         run: supabase functions deploy lg-lookup --project-ref "$PROJECT_REF" --no-verify-jwt
 

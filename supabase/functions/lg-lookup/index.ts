@@ -3,12 +3,12 @@
 
 const LG_BASE_URL = 'https://kic-api.lgbusinesscloud.com';
 // Trim in case of accidental copy/paste whitespace in the secret values
-const LG_API_KEY = (Deno.env.get('LG_API_KEY') || '').trim();
-const LG_API_SECRET = (Deno.env.get('LG_API_SECRET') || '').trim();
+const LG_API_KEY = (Deno.env.get('LG_LOOKUP_API_KEY') || '').trim();
+const LG_API_SECRET = (Deno.env.get('LG_LOOKUP_API_SECRET') || '').trim();
 // Shared team password. Anyone who can reach this function could otherwise
 // run lookups on our LG account, since the Pages URL is public.
-const APP_PASSWORD = (Deno.env.get('APP_PASSWORD') || '').trim();
-const ALLOWED_ORIGIN = Deno.env.get('ALLOWED_ORIGIN') || '*';
+const APP_PASSWORD = (Deno.env.get('LG_LOOKUP_APP_PASSWORD') || '').trim();
+const ALLOWED_ORIGIN = Deno.env.get('LG_LOOKUP_ALLOWED_ORIGIN') || '*';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
   }
 
   if (!LG_API_KEY || !LG_API_SECRET || !APP_PASSWORD) {
-    return json({ error: 'Server is missing LG_API_KEY, LG_API_SECRET or APP_PASSWORD secrets.' }, 500);
+    return json({ error: 'Server is missing LG_LOOKUP_API_KEY, LG_LOOKUP_API_SECRET or LG_LOOKUP_APP_PASSWORD secrets.' }, 500);
   }
   if (req.headers.get('x-app-password') !== APP_PASSWORD) {
     return json({ error: 'Incorrect team password.' }, 401);
