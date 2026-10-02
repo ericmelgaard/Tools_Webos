@@ -8,19 +8,23 @@ const LG_API_SECRET = (Deno.env.get('LG_LOOKUP_API_SECRET') || '').trim();
 // Shared team password. Anyone who can reach this function could otherwise
 // run lookups on our LG account, since the Pages URL is public.
 const APP_PASSWORD = (Deno.env.get('LG_LOOKUP_APP_PASSWORD') || '').trim();
-const ALLOWED_ORIGIN = Deno.env.get('LG_LOOKUP_ALLOWED_ORIGIN') || '*';
+// Comma-separated list of origins allowed to call this function from a browser.
+const ALLOWED_ORIGINS = (Deno.env.get('LG_LOOKUP_ALLOWED_ORIGIN') || '*')
+  .split(',')
+  .map((o) => o.trim().replace(/\/$/, ''))
+  .filter(Boolean);
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'content-type, x-app-password, authorization, apikey',
-};
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+function corsHeadersFor(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin') || '';
+  const allowOrigin = ALLOWED_ORIGINS.includes('*')
+    ? '*'
+    : ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type, x-app-password, authorization, apikey',
+    Vary: 'Origin',
+  };
 }
 
 // --- Simple in-memory token cache ---
@@ -100,6 +104,13 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = corsHeadersFor(req);
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }

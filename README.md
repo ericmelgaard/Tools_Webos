@@ -40,7 +40,8 @@ the **Deploy** workflow.
   to expiring or if LG rejects it.
 - Requests without the correct `x-app-password` header are rejected, so only
   people with the team password can spend lookups on our LG account. The
-  function only accepts browser calls from this account's `github.io` origin.
+  function only accepts browser calls from `webos.tools.wanddigital.com` and
+  this account's `github.io` origin (set in `deploy.yml`).
 - Lists over 100 serials are split into batches (LG's per-request limit).
 - **Export for LGCC (.xlsx)**: `Device Type`, `Model Name`, `Serial Number`
   for found devices, matching LGCC's bulk import template.
