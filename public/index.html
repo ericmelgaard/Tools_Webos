@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>LG Device Lookup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --lg-red: #a50034;
+    --bg: #f5f6f8;
+    --border: #dcdfe4;
+    --text: #1c1f24;
+    --muted: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 20px;
+  }
+  header h1 span { color: var(--lg-red); }
+  main {
+    max-width: 1000px;
+    margin: 32px auto;
+    padding: 0 20px;
+  }
+  .card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+  textarea {
+    width: 100%;
+    min-height: 140px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 13px;
+    resize: vertical;
+  }
+  .hint {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 6px;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+  }
+  button {
+    background: var(--lg-red);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  button.secondary {
+    background: white;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  #status {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #error {
+    color: var(--lg-red);
+    font-size: 13px;
+    margin-top: 10px;
+    display: none;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  th {
+    background: #fafafa;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+  }
+  tr.not-found td { color: var(--muted); font-style: italic; }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.found { background: #e6f4ea; color: #1e7e34; }
+  .badge.missing { background: #fdecea; color: #a50034; }
+  .table-wrap { overflow-x: auto; }
+  .results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>LG<span>&nbsp;Device</span> Lookup</h1>
+</header>
+
+<main>
+  <div class="card">
+    <label for="serials">Serial numbers</label>
+    <textarea id="serials" placeholder="Enter one serial number per line, or separate with commas/spaces.&#10;e.g.&#10;SN001EXAMPLE&#10;SN002EXAMPLE"></textarea>
+    <div class="hint">Up to 100 serials per batch — larger lists are split automatically.</div>
+    <div class="actions">
+      <button id="lookupBtn">Look up devices</button>
+      <span id="status"></span>
+    </div>
+    <div id="error"></div>
+  </div>
+
+  <div class="card" id="resultsCard" style="display:none;">
+    <div class="results-header">
+      <div id="resultsSummary"></div>
+      <div style="display:flex; gap:8px; flex-wrap: wrap;">
+        <button id="exportLgccBtn">Export for LGCC (.xlsx)</button>
+        <button id="exportMacBtn">Export MAC Addresses (.xlsx)</button>
+        <button class="secondary" id="exportBtn">Export CSV (all info)</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th>Serial</th>
+            <th>Status</th>
+            <th>Model</th>
+            <th>MAC Address</th>
+            <th>WiFi MAC</th>
+            <th>Manufacturing Date</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const serialsEl = document.getElementById('serials');
+const lookupBtn = document.getElementById('lookupBtn');
+const statusEl = document.getElementById('status');
+const errorEl = document.getElementById('error');
+const resultsCard = document.getElementById('resultsCard');
+const resultsBody = document.getElementById('resultsBody');
+const resultsSummary = document.getElementById('resultsSummary');
+const exportBtn = document.getElementById('exportBtn');
+const exportLgccBtn = document.getElementById('exportLgccBtn');
+const exportMacBtn = document.getElementById('exportMacBtn');
+
+let lastResults = [];
+
+function parseSerials(raw) {
+  return raw
+    .split(/[\n,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function formatDate(ms) {
+  if (!ms) return '—';
+  const d = new Date(Number(ms));
+  if (isNaN(d.getTime())) return '—';
+  return d.toISOString().slice(0, 10);
+}
+
+function renderResults(results) {
+  lastResults = results;
+  resultsBody.innerHTML = '';
+
+  const foundCount = results.filter(r => r.status).length;
+  resultsSummary.textContent = `${foundCount} of ${results.length} found`;
+
+  for (const r of results) {
+    const tr = document.createElement('tr');
+    if (!r.status) tr.classList.add('not-found');
+
+    tr.innerHTML = `
+      <td>${escapeHtml(r.serial ?? '')}</td>
+      <td><span class="badge ${r.status ? 'found' : 'missing'}">${r.status ? 'Found' : 'Not found'}</span></td>
+      <td>${escapeHtml(r.model_name ?? '—')}</td>
+      <td>${escapeHtml(r.mac ?? '—')}</td>
+      <td>${escapeHtml(r.wmac ?? '—')}</td>
+      <td>${formatDate(r.manufacturing_date)}</td>
+    `;
+    resultsBody.appendChild(tr);
+  }
+
+  resultsCard.style.display = results.length ? 'block' : 'none';
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+async function runLookup() {
+  const serials = parseSerials(serialsEl.value);
+  errorEl.style.display = 'none';
+
+  if (serials.length === 0) {
+    errorEl.textContent = 'Enter at least one serial number.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  lookupBtn.disabled = true;
+  statusEl.textContent = `Looking up ${serials.length} serial${serials.length > 1 ? 's' : ''}...`;
+
+  try {
+    const res = await fetch('/api/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serials }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Lookup failed.');
+    }
+
+    renderResults(data.results || []);
+    statusEl.textContent = '';
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.style.display = 'block';
+    statusEl.textContent = '';
+  } finally {
+    lookupBtn.disabled = false;
+  }
+}
+
+function exportCsv() {
+  if (!lastResults.length) return;
+
+  const headers = ['Serial', 'Status', 'Model', 'MAC Address', 'WiFi MAC', 'Manufacturing Date'];
+  const rows = lastResults.map(r => [
+    r.serial ?? '',
+    r.status ? 'Found' : 'Not found',
+    r.model_name ?? '',
+    r.mac ?? '',
+    r.wmac ?? '',
+    formatDate(r.manufacturing_date),
+  ]);
+
+  const csv = [headers, ...rows]
+    .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `lg-device-lookup-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function getFoundResults() {
+  const foundResults = lastResults.filter(r => r.status);
+  if (foundResults.length === 0) {
+    errorEl.textContent = 'No found devices to export — check your serial numbers.';
+    errorEl.style.display = 'block';
+  }
+  return foundResults;
+}
+
+function downloadXlsx(headers, rows, sheetName, filenamePrefix, colWidths) {
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+function exportLgcc() {
+  if (!lastResults.length) return;
+  const foundResults = getFoundResults();
+  if (foundResults.length === 0) return;
+
+  // LGCC's bulk import rejects extra columns — only these three, in this order.
+  const headers = ['Device Type', 'Model Name', 'Serial Number'];
+  const rows = foundResults.map(r => [
+    'Signage',
+    r.model_name ?? '',
+    r.serial ?? '',
+  ]);
+
+  downloadXlsx(
+    headers, rows, 'bulk_devices', 'lgcc_bulk_devices',
+    [{ wch: 12 }, { wch: 16 }, { wch: 18 }]
+  );
+}
+
+function exportMacAddresses() {
+  if (!lastResults.length) return;
+  const foundResults = getFoundResults();
+  if (foundResults.length === 0) return;
+
+  const headers = ['Model Name', 'Serial Number', 'Ethernet MAC', 'WiFi MAC'];
+  const rows = foundResults.map(r => [
+    r.model_name ?? '',
+    r.serial ?? '',
+    r.mac ?? '',
+    r.wmac ?? '',
+  ]);
+
+  downloadXlsx(
+    headers, rows, 'mac_addresses', 'mac_addresses',
+    [{ wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 16 }]
+  );
+}
+
+lookupBtn.addEventListener('click', runLookup);
+exportBtn.addEventListener('click', exportCsv);
+exportLgccBtn.addEventListener('click', exportLgcc);
+exportMacBtn.addEventListener('click', exportMacAddresses);
+serialsEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.metaKey) runLookup();
+});
+</script>
+
+</body>
+</html>
