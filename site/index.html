@@ -5,6 +5,7 @@
 <title>LG Device Lookup</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="config.js"></script>
 <style>
   :root {
     --lg-red: #a50034;
@@ -47,6 +48,15 @@
     font-weight: 600;
     margin-bottom: 8px;
     font-size: 14px;
+  }
+  input[type="password"] {
+    width: 260px;
+    max-width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 16px;
   }
   textarea {
     width: 100%;
@@ -144,6 +154,8 @@
 
 <main>
   <div class="card">
+    <label for="password">Team password</label>
+    <input type="password" id="password" autocomplete="current-password" />
     <label for="serials">Serial numbers</label>
     <textarea id="serials" placeholder="Enter one serial number per line, or separate with commas/spaces.&#10;e.g.&#10;SN001EXAMPLE&#10;SN002EXAMPLE"></textarea>
     <div class="hint">Up to 100 serials per batch — larger lists are split automatically.</div>
@@ -182,6 +194,7 @@
 </main>
 
 <script>
+const passwordEl = document.getElementById('password');
 const serialsEl = document.getElementById('serials');
 const lookupBtn = document.getElementById('lookupBtn');
 const statusEl = document.getElementById('status');
@@ -194,6 +207,9 @@ const exportLgccBtn = document.getElementById('exportLgccBtn');
 const exportMacBtn = document.getElementById('exportMacBtn');
 
 let lastResults = [];
+
+const PASSWORD_KEY = 'lgLookupPassword';
+try { passwordEl.value = localStorage.getItem(PASSWORD_KEY) || ''; } catch {}
 
 function parseSerials(raw) {
   return raw
@@ -245,6 +261,17 @@ async function runLookup() {
   const serials = parseSerials(serialsEl.value);
   errorEl.style.display = 'none';
 
+  if (!window.APP_CONFIG?.apiUrl) {
+    errorEl.textContent = 'This page is not configured with an API URL (config.js).';
+    errorEl.style.display = 'block';
+    return;
+  }
+  if (!passwordEl.value) {
+    errorEl.textContent = 'Enter the team password.';
+    errorEl.style.display = 'block';
+    passwordEl.focus();
+    return;
+  }
   if (serials.length === 0) {
     errorEl.textContent = 'Enter at least one serial number.';
     errorEl.style.display = 'block';
@@ -255,13 +282,19 @@ async function runLookup() {
   statusEl.textContent = `Looking up ${serials.length} serial${serials.length > 1 ? 's' : ''}...`;
 
   try {
-    const res = await fetch('/api/lookup', {
+    const res = await fetch(window.APP_CONFIG.apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-app-password': passwordEl.value },
       body: JSON.stringify({ serials }),
     });
     const data = await res.json();
 
+    if (res.status === 401) {
+      try { localStorage.removeItem(PASSWORD_KEY); } catch {}
+      passwordEl.focus();
+    } else if (res.ok) {
+      try { localStorage.setItem(PASSWORD_KEY, passwordEl.value); } catch {}
+    }
     if (!res.ok) {
       throw new Error(data.error || 'Lookup failed.');
     }

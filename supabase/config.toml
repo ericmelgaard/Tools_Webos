@@ -1,0 +1,5 @@
+project_id = "tools-webos"
+
+[functions.lg-lookup]
+# Access is gated by the APP_PASSWORD check inside the function instead.
+verify_jwt = false
